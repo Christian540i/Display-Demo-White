@@ -182,7 +182,7 @@ export default function Hero() {
         </div>
 
         {/* Content */}
-        <div className="relative h-full flex items-center">
+        <div className="relative h-full flex items-center pt-28 pb-16">
           <div className="max-w-7xl mx-auto px-6 w-full">
             <div className="max-w-2xl">
               {/* Badge */}
