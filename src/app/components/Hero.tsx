@@ -5,78 +5,95 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { ArrowRight, Star, Shield, Clock, ChevronDown } from "lucide-react";
 
 /**
- * Extracts video frames to ImageBitmap array for instant canvas drawing.
- * Shows frame 0 immediately, then extracts the rest in background.
- * Uses fewer frames (60) for fast extraction (~1s for a 6MB video).
- * NEVER does video.currentTime seeking on scroll — that's what causes jitter.
+ * Detects if we're on a mobile/tablet device where background
+ * video frame extraction won't work reliably.
  */
-function useVideoFrames(src: string, totalFrames: number) {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      ) || window.innerWidth < 768;
+    setIsMobile(check);
+  }, []);
+  return isMobile;
+}
+
+/**
+ * Extracts video frames to ImageBitmap array for instant canvas drawing.
+ * Only runs on desktop — mobile gets a simple video fallback.
+ */
+function useVideoFrames(src: string, totalFrames: number, enabled: boolean) {
   const [frames, setFrames] = useState<ImageBitmap[]>([]);
   const [firstFrame, setFirstFrame] = useState<ImageBitmap | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
 
     const extract = async () => {
-      const video = document.createElement("video");
-      video.src = src;
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = "auto";
-      video.crossOrigin = "anonymous";
+      try {
+        const video = document.createElement("video");
+        video.src = src;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        video.crossOrigin = "anonymous";
 
-      // Wait for video data to load
-      await new Promise<void>((resolve) => {
-        if (video.readyState >= 2) {
-          resolve();
-        } else {
-          video.addEventListener("loadeddata", () => resolve(), { once: true });
-        }
-      });
+        await new Promise<void>((resolve, reject) => {
+          if (video.readyState >= 2) {
+            resolve();
+          } else {
+            video.addEventListener("loadeddata", () => resolve(), { once: true });
+            video.addEventListener("error", () => reject(), { once: true });
+          }
+        });
 
-      if (cancelled) return;
-
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-
-      const duration = video.duration;
-
-      // Helper to seek and grab a frame
-      const grabFrame = async (time: number): Promise<ImageBitmap> => {
-        video.currentTime = time;
-        await new Promise<void>((r) =>
-          video.addEventListener("seeked", () => r(), { once: true })
-        );
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        return createImageBitmap(canvas);
-      };
-
-      // 1) Extract frame 0 FIRST and show it immediately
-      const frame0 = await grabFrame(0);
-      if (cancelled) return;
-      setFirstFrame(frame0);
-
-      // 2) Extract remaining frames
-      const extracted: ImageBitmap[] = [frame0];
-      for (let i = 1; i < totalFrames; i++) {
         if (cancelled) return;
-        const time = (i / (totalFrames - 1)) * duration;
-        const bitmap = await grabFrame(time);
-        extracted.push(bitmap);
-      }
 
-      if (!cancelled) {
-        setFrames(extracted);
-        setReady(true);
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        const duration = video.duration;
+
+        const grabFrame = async (time: number): Promise<ImageBitmap> => {
+          video.currentTime = time;
+          await new Promise<void>((r) =>
+            video.addEventListener("seeked", () => r(), { once: true })
+          );
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          return createImageBitmap(canvas);
+        };
+
+        const frame0 = await grabFrame(0);
+        if (cancelled) return;
+        setFirstFrame(frame0);
+
+        const extracted: ImageBitmap[] = [frame0];
+        for (let i = 1; i < totalFrames; i++) {
+          if (cancelled) return;
+          const time = (i / (totalFrames - 1)) * duration;
+          const bitmap = await grabFrame(time);
+          extracted.push(bitmap);
+        }
+
+        if (!cancelled) {
+          setFrames(extracted);
+          setReady(true);
+        }
+      } catch {
+        // Frame extraction failed — fallback video will show
       }
     };
 
     extract();
-    return () => { cancelled = true; };
-  }, [src, totalFrames]);
+    return () => {
+      cancelled = true;
+    };
+  }, [src, totalFrames, enabled]);
 
   return { frames, firstFrame, ready };
 }
@@ -84,12 +101,17 @@ function useVideoFrames(src: string, totalFrames: number) {
 export default function Hero() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoFallbackRef = useRef<HTMLVideoElement>(null);
   const currentFrameRef = useRef(-1);
   const canvasSizedRef = useRef(false);
+  const isMobile = useIsMobile();
 
-  // 60 frames is plenty for smooth scroll (1 frame per ~50px of scroll)
-  // and extracts in ~1-2 seconds for a 6MB video
-  const { frames, firstFrame, ready } = useVideoFrames("/hero-video.mp4", 60);
+  // Only extract frames on desktop
+  const { frames, firstFrame, ready } = useVideoFrames(
+    "/hero-video.mp4",
+    60,
+    !isMobile
+  );
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -98,7 +120,7 @@ export default function Hero() {
 
   const scrollHintOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
 
-  // Draw a single frame to canvas
+  // Draw a single frame to canvas (desktop only)
   const drawFrame = useCallback(
     (index: number) => {
       const canvas = canvasRef.current;
@@ -112,11 +134,10 @@ export default function Hero() {
     [frames]
   );
 
-  // Show first frame on canvas immediately (before all frames are extracted)
+  // Show first frame on canvas immediately
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !firstFrame || canvasSizedRef.current) return;
-
     canvas.width = firstFrame.width;
     canvas.height = firstFrame.height;
     const ctx = canvas.getContext("2d");
@@ -126,16 +147,13 @@ export default function Hero() {
     }
   }, [firstFrame]);
 
-  // Once all frames ready, set canvas size and draw current scroll position
+  // Once all frames ready, draw current scroll position
   useEffect(() => {
     if (!ready || frames.length === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     canvas.width = frames[0].width;
     canvas.height = frames[0].height;
-
-    // Draw the frame matching current scroll position
     const value = scrollYProgress.get();
     const idx = Math.min(
       Math.floor(value * (frames.length - 1)),
@@ -144,7 +162,7 @@ export default function Hero() {
     drawFrame(Math.max(0, idx));
   }, [ready, frames, drawFrame, scrollYProgress]);
 
-  // Scroll → frame (only once frames are fully ready)
+  // Scroll → frame on desktop
   useEffect(() => {
     if (!ready) return;
     const unsubscribe = scrollYProgress.on("change", (value) => {
@@ -157,24 +175,52 @@ export default function Hero() {
     return unsubscribe;
   }, [scrollYProgress, frames, ready, drawFrame]);
 
+  // Mobile: autoplay the video in a loop
+  useEffect(() => {
+    if (!isMobile || !videoFallbackRef.current) return;
+    videoFallbackRef.current.play().catch(() => {
+      // Autoplay blocked — that's fine, poster will show
+    });
+  }, [isMobile]);
+
   return (
     <section
       id="hero"
       ref={sectionRef}
       className="relative bg-stone-950"
-      style={{ height: "400vh" }}
+      style={{ height: isMobile ? "100vh" : "400vh" }}
     >
       <div className="sticky top-0 h-screen w-full overflow-hidden">
-        {/* Canvas background — frame 0 shows instantly, rest load silently */}
+        {/* Background */}
         <div className="absolute inset-0">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-full object-cover"
+          {/* Video fallback — always present, visible on mobile or if canvas fails */}
+          <video
+            ref={videoFallbackRef}
+            src="/hero-video.mp4"
+            muted
+            playsInline
+            loop
+            autoPlay
+            preload="auto"
+            className="absolute inset-0 w-full h-full object-cover"
             style={{
-              opacity: firstFrame ? 1 : 0,
-              transition: "opacity 0.4s ease",
+              // On desktop: hidden once canvas takes over. On mobile: always visible.
+              opacity: isMobile ? 1 : firstFrame ? 0 : 1,
+              transition: "opacity 0.5s ease",
             }}
           />
+
+          {/* Canvas overlay — desktop only, takes over once frames are extracted */}
+          {!isMobile && (
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{
+                opacity: firstFrame ? 1 : 0,
+                transition: "opacity 0.4s ease",
+              }}
+            />
+          )}
 
           {/* Gradient overlays for text readability */}
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent pointer-events-none" />
