@@ -105,7 +105,7 @@ export default function Footer() {
                   href={social.href}
                   className="w-10 h-10 rounded-xl bg-stone-800 flex items-center justify-center hover:bg-stone-700 hover:text-white transition-all duration-300"
                 >
-                  <social.icon size={16} />
+                  <social.icon />
                 </a>
               ))}
             </div>
