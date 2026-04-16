@@ -30,8 +30,8 @@ export default function Navbar() {
       transition={{ duration: 0.6, ease: "easeOut" }}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         scrolled
-          ? "bg-white/80 backdrop-blur-xl shadow-[0_1px_30px_rgba(0,0,0,0.06)] py-3"
-          : "bg-transparent py-5"
+          ? "bg-white/90 backdrop-blur-xl shadow-[0_1px_30px_rgba(0,0,0,0.06)] py-3"
+          : "bg-black/20 backdrop-blur-md py-5"
       }`}
     >
       <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -52,7 +52,11 @@ export default function Navbar() {
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
-          <span className="text-xl font-bold tracking-tight text-stone-800">
+          <span
+            className={`text-xl font-bold tracking-tight transition-colors duration-500 ${
+              scrolled ? "text-stone-800" : "text-white"
+            }`}
+          >
             Haven
           </span>
         </a>
@@ -63,7 +67,11 @@ export default function Navbar() {
             <a
               key={link.name}
               href={link.href}
-              className="relative px-4 py-2 text-sm font-medium text-stone-500 hover:text-stone-800 transition-colors duration-300 group"
+              className={`relative px-4 py-2 text-sm font-medium transition-colors duration-300 group ${
+                scrolled
+                  ? "text-stone-500 hover:text-stone-800"
+                  : "text-white/70 hover:text-white"
+              }`}
             >
               {link.name}
               <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-warm-400 to-amber-500 rounded-full group-hover:w-6 transition-all duration-300" />
@@ -75,7 +83,11 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-4">
           <a
             href="tel:+1234567890"
-            className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 transition-colors"
+            className={`flex items-center gap-2 text-sm transition-colors duration-300 ${
+              scrolled
+                ? "text-stone-500 hover:text-stone-700"
+                : "text-white/70 hover:text-white"
+            }`}
           >
             <Phone size={15} />
             (555) 123-4567
@@ -91,12 +103,20 @@ export default function Navbar() {
         {/* Mobile Toggle */}
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="md:hidden p-2 rounded-xl hover:bg-stone-100 transition-colors"
+          className={`md:hidden p-2 rounded-xl transition-colors ${
+            scrolled ? "hover:bg-stone-100" : "hover:bg-white/10"
+          }`}
         >
           {mobileOpen ? (
-            <X size={22} className="text-stone-700" />
+            <X
+              size={22}
+              className={scrolled ? "text-stone-700" : "text-white"}
+            />
           ) : (
-            <Menu size={22} className="text-stone-700" />
+            <Menu
+              size={22}
+              className={scrolled ? "text-stone-700" : "text-white"}
+            />
           )}
         </button>
       </div>
